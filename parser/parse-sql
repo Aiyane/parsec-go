@@ -1,0 +1,62 @@
+package parser
+
+var Select, Having, Group, Where, On, JOIN, As, From, Field, Desc, Aes, Order, Limit, Func, Expr Combinator
+
+func ParseSQL(s string) []*Node {
+	Expr = func() Parser {
+		return B["@or"](Select, Having, Group, Where, On, JOIN, As, From, Field, Desc, Aes, Order, Limit, Func, NonParens)()
+	}
+	Select = func() Parser {
+		return T["@="]("select", B["@seq"](Open, S["@_"]("SELECT"), Expr, O["@+"](Expr), Close))()
+	}
+	Having = func() Parser {
+		return T["@="]("having", B["@seq"](Open, S["@_"]("HAVING"), Expr, O["@+"](Expr), Close))()
+	}
+	Group = func() Parser {
+		return T["@="]("group", B["@seq"](Open, S["@_"]("GROUP"), Expr, O["@+"](Expr), Close))()
+	}
+	Where = func() Parser {
+		return T["@="]("where", B["@seq"](Open, S["@_"]("WHERE"), Expr, O["@+"](Expr), Close))()
+	}
+	On = func() Parser {
+		return T["@="]("on", B["@seq"](Open, S["@_"]("ON"), JOIN, O["@+"](Expr), Close))()
+	}
+	JOIN = func() Parser {
+		return T["@="]("join", B["@seq"](Open, S["@_"]("JOIN"), Expr, O["@+"](Expr), Close))()
+	}
+	As = func() Parser {
+		return T["@="]("as", B["@seq"](Open, S["@_"]("AS"), Expr, NonParens, Close))()
+	}
+	From = func() Parser {
+		return T["@="]("from", B["@seq"](Open, S["@_"]("FROM"), Expr, Close))()
+	}
+	Field = func() Parser {
+		return T["@="]("field", B["@seq"](Open, S["@_"]("."), NonParens, NonParens, Close))()
+	}
+	Desc = func() Parser {
+		return T["@="]("desc", B["@seq"](Open, S["@_"]("DESC"), Expr, Close))()
+	}
+	Aes = func() Parser {
+		return T["@="]("aes", B["@seq"](Open, S["@_"]("AES"), Expr, Close))()
+	}
+	Order = func() Parser {
+		return T["@="]("order", B["@seq"](Open, S["@_"]("ORDER"), Expr, O["@+"](B["@or"](Desc, Aes)), Close))()
+	}
+	Limit = func() Parser {
+		return T["@="]("limit", B["@seq"](Open, S["@_"]("LIMIT"), Expr, Expr, Expr, Close))()
+	}
+	Func = func() Parser {
+		return T["@="]("func", B["@seq"](Open,
+			B["@!"](B["@or"](
+				S["$$"]("SELECT"), S["$$"]("HAVING"), S["$$"]("GROUP"), S["$$"]("WHERE"),
+				S["$$"]("ON"), S["$$"]("JOIN"), S["$$"]("AS"), S["$$"]("FROM"), S["$$"]("."),
+				S["$$"]("DESC"), S["$$"]("AES"), S["$$"]("ORDER"), S["$$"]("LIMIT"),
+			)),
+			B["@*"](Expr),
+			Close))()
+	}
+
+	SetParameters()
+	t, _ := Eval(Select, Scan(s))
+	return t
+}
