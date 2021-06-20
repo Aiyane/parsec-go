@@ -1,0 +1,26 @@
+package parser
+
+func SetParameters() {
+	SetDelims("(", ")", "[", "]", "{", "}", "'", "`", ",")
+	SetLineComment("//")
+	SetQuotationMarks("\"")
+	SetLispChar("#\\", "?\\")
+}
+
+var Open = B["@or"](S["@~"]("("), S["@~"]("["))
+var Close = B["@or"](S["@~"](")"), S["@~"]("]"))
+var NonParens = B["@and"](B["@!"](Open), B["@!"](Close))
+
+var Parens, Sexp Combinator
+
+func ParseSexp(s string) []*Node {
+	Parens = func() Parser {
+		return T["@="]("sexp", B["@seq"](Open, B["@*"](Sexp), Close))()
+	}
+	Sexp = func() Parser {
+		return O["@+"](B["@or"](Parens, NonParens))()
+	}
+	SetParameters()
+	t, _ := Eval(Sexp, Scan(s))
+	return t
+}
