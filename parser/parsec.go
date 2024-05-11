@@ -1,5 +1,12 @@
 package parser
 
+import (
+	"encoding/json"
+	"reflect"
+	"runtime"
+	"strings"
+)
+
 func ScanString(s string, start int) string {
 	quotationMark := s[start : start+1]
 	var loop func(int, bool, string) string
@@ -591,8 +598,70 @@ func constrExpR(tp string, fields []*Node) *Node {
 	return loop(fields[1:], fields[0])
 }
 
+// :: 加一层缓存
+func CC(c Combinator) Combinator {
+	return func() Parser {
+		return func(toks []*Node, stk []*Pair, ctx interface{}) ([]*Node, []*Node) {
+			if cache, ok := ctx.(map[string][][]*Node); !ok {
+				return c()(toks, stk, ctx)
+			} else if t, r := getCache(cache, c, toks); t != nil {
+				return t, r
+			} else {
+				nt, nr := c()(toks, stk, ctx)
+				setCache(cache, c, toks, nt, nr)
+				return nt, nr
+			}
+		}
+	}
+}
+
+func getCache(cache map[string][][]*Node, c Combinator, toks []*Node) ([]*Node, []*Node) {
+	key := getCacheKey(c, toks)
+	if res, ok := cache[key]; !ok {
+		return nil, nil
+	} else {
+		return res[0], res[1]
+	}
+}
+
+func setCache(cache map[string][][]*Node, c Combinator, toks, nt, nr []*Node) {
+	key := getCacheKey(c, toks)
+	cache[key] = [][]*Node{nt, nr}
+}
+
+func getCacheKey(c Combinator, toks []*Node) string {
+	name := functionName(c)
+	runes := make([]rune, 0, len(toks)*100)
+	for _, tok := range toks {
+		runes = append(runes, tok.Text...)
+	}
+	res, _ := json.Marshal([]string{name, string(runes)})
+	return res
+}
+
+func functionName(i interface{}, seps ...rune) string {
+	// 获取函数名称
+	fn := runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
+
+	// 用 seps 进行分割
+	fields := strings.FieldsFunc(fn, func(sep rune) bool {
+		for _, s := range seps {
+			if sep == s {
+				return true
+			}
+		}
+		return false
+	})
+
+	if size := len(fields); size > 0 {
+		return fields[size-1]
+	}
+	return ""
+}
+
 func Eval(c Combinator, toks []*Node) ([]*Node, []*Node) {
-	return c()(toks, make([]*Pair, 0), nil)
+	cache := make(map[string][][]*Node, len(toks))
+	return c()(toks, make([]*Pair, 0), cache)
 }
 
 var (
@@ -612,6 +681,7 @@ var (
 		"@*^":    AtStar_,
 		"@!^":    AtFail_,
 		"$glob^": _glob_,
+		"::":     CC,
 	}
 	T = map[string]func(string, ...Combinator) Combinator{
 		"@=": AtEq,
